@@ -1,0 +1,181 @@
+import json
+import re
+from typing import Any
+
+from fastapi import HTTPException, UploadFile
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.db.schemas import Category, Product, ProductImage, ProductVariant
+from app.schemas.product import ProductCreate, ProductImageCreate
+from app.services.cloudinary.cloudinary_service import CloudinaryService
+
+
+def slugify(value: str) -> str:
+    value = value.lower().strip()
+    value = re.sub(r"[^\w\s-]", "", value)
+    return re.sub(r"[-\s]+", "-", value).strip("-")
+
+
+def unique_slug(db: Session, base_slug: str) -> str:
+    slug = base_slug
+    counter = 1
+    while db.scalar(select(Product.id).where(Product.slug == slug)):
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+    return slug
+
+
+class ProductService:
+    def __init__(self, session: Session, cloudinary_service: CloudinaryService | None = None):
+        self.db = session
+        self.cloudinary = cloudinary_service or CloudinaryService()
+
+    def _attach_images(
+        self,
+        product: Product,
+        image_payloads: list[ProductImageCreate],
+    ) -> None:
+        for image_data in image_payloads:
+            if not image_data.url:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Image url is required when images are provided in JSON",
+                )
+            product.images.append(ProductImage(**image_data.model_dump()))
+
+        if image_payloads and not any(image.is_primary for image in image_payloads):
+            product.images[0].is_primary = True
+
+    async def _upload_and_attach_images(
+        self,
+        product: Product,
+        files: list[UploadFile],
+        alt_texts: list[str] | None = None,
+    ) -> None:
+        if not files:
+            return
+
+        uploads = await self.cloudinary.upload_images(
+            files,
+            folder=f"furniture/products/{product.slug}",
+        )
+
+        for index, upload in enumerate(uploads):
+            alt_text = alt_texts[index] if alt_texts and index < len(alt_texts) else None
+            product.images.append(
+                ProductImage(
+                    url=upload["url"],
+                    public_id=upload["public_id"],
+                    alt_text=alt_text,
+                    is_primary=index == 0 and not product.images,
+                    sort_order=index,
+                )
+            )
+
+    def create_product_record(self, payload: ProductCreate, base_slug: str) -> Product:
+        category = self.db.get(Category, payload.category_id)
+        if category is None:
+            raise HTTPException(status_code=404, detail="Category not found")
+
+        if payload.sku and self.db.scalar(select(Product.id).where(Product.sku == payload.sku)):
+            raise HTTPException(status_code=409, detail="Product SKU already exists")
+
+        product = Product(
+            category_id=payload.category_id,
+            name=payload.name,
+            slug=unique_slug(self.db, base_slug),
+            description=payload.description,
+            short_description=payload.short_description,
+            sku=payload.sku,
+            price=payload.price,
+            compare_at_price=payload.compare_at_price,
+            currency=payload.currency,
+            material=payload.material,
+            color=payload.color,
+            style=payload.style,
+            room_type=payload.room_type,
+            width_cm=payload.width_cm,
+            height_cm=payload.height_cm,
+            depth_cm=payload.depth_cm,
+            weight_kg=payload.weight_kg,
+            extra_specs=payload.extra_specs,
+            is_featured=payload.is_featured,
+            is_active=payload.is_active,
+            stock_quantity=payload.stock_quantity,
+        )
+
+        for variant_data in payload.variants:
+            existing_variant = self.db.scalar(
+                select(ProductVariant.id).where(ProductVariant.sku == variant_data.sku)
+            )
+            if existing_variant:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Variant SKU '{variant_data.sku}' already exists",
+                )
+            product.variants.append(ProductVariant(**variant_data.model_dump()))
+
+        return product
+
+    async def create_product(
+        self,
+        payload: ProductCreate,
+        *,
+        image_files: list[UploadFile] | None = None,
+        alt_texts: list[str] | None = None,
+    ) -> Product:
+        base_slug = slugify(payload.slug or payload.name)
+        if not base_slug:
+            raise HTTPException(status_code=400, detail="Unable to generate a valid slug")
+
+        product = self.create_product_record(payload, base_slug)
+
+        if image_files:
+            await self._upload_and_attach_images(product, image_files, alt_texts)
+        elif payload.images:
+            self._attach_images(product, payload.images)
+
+        self.db.add(product)
+        self.db.commit()
+        self.db.refresh(product)
+        return product
+
+    async def add_product_images(
+        self,
+        product_id: int,
+        files: list[UploadFile],
+        alt_texts: list[str] | None = None,
+    ) -> Product:
+        product = self.db.get(Product, product_id)
+        if product is None:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        await self._upload_and_attach_images(product, files, alt_texts)
+        self.db.commit()
+        self.db.refresh(product)
+        return product
+
+    def delete_product_image(self, product_id: int, image_id: int) -> None:
+        product = self.db.get(Product, product_id)
+        if product is None:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        image = self.db.get(ProductImage, image_id)
+        if image is None or image.product_id != product.id:
+            raise HTTPException(status_code=404, detail="Product image not found")
+
+        if image.public_id:
+            self.cloudinary.delete_image(image.public_id)
+
+        self.db.delete(image)
+        self.db.commit()
+
+    @staticmethod
+    def parse_product_form_data(data: str) -> ProductCreate:
+        try:
+            raw_data: dict[str, Any] = json.loads(data)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail="Invalid product JSON in form data") from exc
+
+        return ProductCreate.model_validate(raw_data)

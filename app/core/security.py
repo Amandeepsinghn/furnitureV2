@@ -1,8 +1,17 @@
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 import jwt
 from app.core.config import settings
 from fastapi import HTTPException
+
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
 
 
 async def sign_jwt(payload: dict[str, str]) -> str:
