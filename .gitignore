@@ -110,5 +110,8 @@ docker-compose.override.yml
 # --- Jupyter (if used) ---
 .ipynb_checkpoints/
 
+# --- Vercel ---
+.vercel/
+
 # --- uv ---
 # uv.lock should be committed for reproducible installs
