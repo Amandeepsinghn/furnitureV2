@@ -62,3 +62,48 @@ class EmailService:
             logger.info("Cart notification email sent to %s", self.recipient_email)
         except Exception:
             logger.exception("Failed to send cart notification email")
+
+    def send_enquiry_notification(
+        self,
+        *,
+        product_id: int,
+        product_slug: str,
+        product_name: str,
+        full_name: str,
+        phone: str,
+        email: str,
+        preferred_contact: str,
+        message: str | None = None,
+    ) -> None:
+        if not self.is_configured():
+            logger.warning("Enquiry email skipped: SMTP settings are not configured")
+            return
+
+        message_line = f"Message: {message}\n" if message else ""
+
+        body = (
+            "New product enquiry received.\n\n"
+            f"Product ID: {product_id}\n"
+            f"Product: {product_name}\n"
+            f"Product slug: {product_slug}\n\n"
+            f"Customer: {full_name}\n"
+            f"Email: {email}\n"
+            f"Phone: {phone}\n"
+            f"Preferred contact: {preferred_contact}\n"
+            f"{message_line}"
+        )
+
+        mail = MIMEMultipart()
+        mail["From"] = self.sender_email
+        mail["To"] = self.recipient_email
+        mail["Subject"] = f"Product enquiry: {product_name}"
+        mail.attach(MIMEText(body, "plain"))
+
+        try:
+            with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=30) as server:
+                server.starttls()
+                server.login(self.sender_email, self.app_password)
+                server.sendmail(self.sender_email, self.recipient_email, mail.as_string())
+            logger.info("Enquiry notification email sent to %s", self.recipient_email)
+        except Exception:
+            logger.exception("Failed to send enquiry notification email")
