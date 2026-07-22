@@ -53,6 +53,30 @@ class ProductCreate(BaseModel):
     variants: list[ProductVariantCreate] = []
 
 
+class ProductUpdate(BaseModel):
+    category_id: int | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    slug: str | None = Field(default=None, max_length=220)
+    description: str | None = None
+    short_description: str | None = Field(default=None, max_length=300)
+    sku: str | None = Field(default=None, max_length=80)
+    price: Decimal | None = Field(default=None, ge=0)
+    compare_at_price: Decimal | None = Field(default=None, ge=0)
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+    material: str | None = Field(default=None, max_length=80)
+    color: str | None = Field(default=None, max_length=80)
+    style: str | None = Field(default=None, max_length=80)
+    room_type: str | None = Field(default=None, max_length=80)
+    width_cm: Decimal | None = Field(default=None, ge=0)
+    height_cm: Decimal | None = Field(default=None, ge=0)
+    depth_cm: Decimal | None = Field(default=None, ge=0)
+    weight_kg: Decimal | None = Field(default=None, ge=0)
+    extra_specs: dict[str, Any] | None = None
+    is_featured: bool | None = None
+    is_active: bool | None = None
+    stock_quantity: int | None = Field(default=None, ge=0)
+
+
 class ProductImageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

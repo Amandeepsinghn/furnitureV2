@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.schemas import Category, Product, ProductImage, ProductVariant
-from app.schemas.product import ProductCreate, ProductImageCreate
+from app.schemas.product import ProductCreate, ProductImageCreate, ProductUpdate
 from app.services.cloudinary.cloudinary_service import CloudinaryService
 
 
@@ -179,3 +179,63 @@ class ProductService:
             raise HTTPException(status_code=400, detail="Invalid product JSON in form data") from exc
 
         return ProductCreate.model_validate(raw_data)
+
+    def _get_product_or_404(self, product_id: int) -> Product:
+        product = self.db.get(Product, product_id)
+        if product is None:
+            raise HTTPException(status_code=404, detail="Product not found")
+        return product
+
+    def update_product(self, product_id: int, payload: ProductUpdate) -> Product:
+        product = self._get_product_or_404(product_id)
+        update_data = payload.model_dump(exclude_unset=True)
+
+        if not update_data:
+            raise HTTPException(status_code=400, detail="No fields provided to update")
+
+        if "category_id" in update_data:
+            category = self.db.get(Category, update_data["category_id"])
+            if category is None:
+                raise HTTPException(status_code=404, detail="Category not found")
+
+        if update_data.get("sku"):
+            existing_sku = self.db.scalar(
+                select(Product.id).where(
+                    Product.sku == update_data["sku"],
+                    Product.id != product_id,
+                )
+            )
+            if existing_sku:
+                raise HTTPException(status_code=409, detail="Product SKU already exists")
+
+        if "slug" in update_data and update_data["slug"]:
+            base_slug = slugify(update_data["slug"])
+            if not base_slug:
+                raise HTTPException(status_code=400, detail="Unable to generate a valid slug")
+            update_data["slug"] = base_slug
+
+            existing_slug = self.db.scalar(
+                select(Product.id).where(
+                    Product.slug == update_data["slug"],
+                    Product.id != product_id,
+                )
+            )
+            if existing_slug:
+                raise HTTPException(status_code=409, detail="Product slug already exists")
+
+        for field, value in update_data.items():
+            setattr(product, field, value)
+
+        self.db.commit()
+        self.db.refresh(product)
+        return product
+
+    def delete_product(self, product_id: int) -> None:
+        product = self._get_product_or_404(product_id)
+
+        for image in list(product.images):
+            if image.public_id:
+                self.cloudinary.delete_image(image.public_id)
+
+        self.db.delete(product)
+        self.db.commit()

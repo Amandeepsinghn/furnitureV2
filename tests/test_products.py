@@ -77,3 +77,51 @@ def test_create_product_with_images(client, test_category, unique_suffix, db):
     db.execute(delete(ProductImage).where(ProductImage.product_id == data["id"]))
     db.execute(delete(Product).where(Product.id == data["id"]))
     db.commit()
+
+
+def test_update_product(client, test_product):
+    response = client.patch(
+        f"/api/v1/products/{test_product.id}",
+        json={"name": "Updated Chair", "price": 5999.00, "stock_quantity": 20},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Updated Chair"
+    assert float(data["price"]) == 5999.00
+    assert data["stock_quantity"] == 20
+
+
+def test_update_product_not_found(client):
+    response = client.patch(
+        "/api/v1/products/999999",
+        json={"name": "Ghost"},
+    )
+    assert response.status_code == 404
+
+
+def test_delete_product(client, test_category, unique_suffix, db):
+    from sqlalchemy import select
+
+    from app.db.schemas import Product
+
+    product = Product(
+        category_id=test_category.id,
+        name=f"Delete Me {unique_suffix}",
+        slug=f"delete-me-{unique_suffix}",
+        is_active=True,
+        stock_quantity=1,
+    )
+    db.add(product)
+    db.commit()
+    product_id = product.id
+
+    response = client.delete(f"/api/v1/products/{product_id}")
+    assert response.status_code == 204
+
+    deleted = db.scalar(select(Product).where(Product.id == product_id))
+    assert deleted is None
+
+
+def test_delete_product_not_found(client):
+    response = client.delete("/api/v1/products/999999")
+    assert response.status_code == 404

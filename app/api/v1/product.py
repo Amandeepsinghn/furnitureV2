@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps.database import get_db
 from app.db.schemas import Product
-from app.schemas.product import ProductCreate, ProductResponse
+from app.schemas.product import ProductCreate, ProductResponse, ProductUpdate
 from app.services.cloudinary.cloudinary_service import CloudinaryService
 from app.services.product.product_service import ProductService
 
@@ -47,6 +47,23 @@ async def create_product_with_images(
 
     payload = ProductService.parse_product_form_data(data)
     return await service.create_product(payload, image_files=images, alt_texts=alt_texts)
+
+
+@router.patch("/{product_id}", response_model=ProductResponse)
+def update_product(
+    product_id: int,
+    payload: ProductUpdate,
+    service: ProductService = Depends(get_product_service),
+) -> Product:
+    return service.update_product(product_id, payload)
+
+
+@router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_product(
+    product_id: int,
+    service: ProductService = Depends(get_product_service),
+) -> None:
+    service.delete_product(product_id)
 
 
 @router.post("/{product_id}/images", response_model=ProductResponse)
