@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.schemas import Category, Product, ProductImage, ProductVariant
-from app.schemas.product import ProductCreate, ProductImageCreate, ProductUpdate
+from app.schemas.product import ProductCreate, ProductImageCreate, ProductUpdate, ProductVariantCreate, ProductVariantUpdate
 from app.services.cloudinary.cloudinary_service import CloudinaryService
 
 
@@ -114,6 +114,16 @@ class ProductService:
                     status_code=409,
                     detail=f"Variant SKU '{variant_data.sku}' already exists",
                 )
+            if variant_data.seating_capacity is not None:
+                duplicate_capacity = any(
+                    v.seating_capacity == variant_data.seating_capacity
+                    for v in product.variants
+                )
+                if duplicate_capacity:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Seating capacity {variant_data.seating_capacity} already exists for this product",
+                    )
             product.variants.append(ProductVariant(**variant_data.model_dump()))
 
         return product
@@ -238,4 +248,83 @@ class ProductService:
                 self.cloudinary.delete_image(image.public_id)
 
         self.db.delete(product)
+        self.db.commit()
+
+    def _get_variant_or_404(self, product_id: int, variant_id: int) -> ProductVariant:
+        self._get_product_or_404(product_id)
+        variant = self.db.get(ProductVariant, variant_id)
+        if variant is None or variant.product_id != product_id:
+            raise HTTPException(status_code=404, detail="Product variant not found")
+        return variant
+
+    def _ensure_unique_variant_sku(self, sku: str, exclude_variant_id: int | None = None) -> None:
+        stmt = select(ProductVariant.id).where(ProductVariant.sku == sku)
+        if exclude_variant_id is not None:
+            stmt = stmt.where(ProductVariant.id != exclude_variant_id)
+        if self.db.scalar(stmt):
+            raise HTTPException(status_code=409, detail=f"Variant SKU '{sku}' already exists")
+
+    def _ensure_unique_seating_capacity(
+        self,
+        product_id: int,
+        seating_capacity: int | None,
+        exclude_variant_id: int | None = None,
+    ) -> None:
+        if seating_capacity is None:
+            return
+        stmt = select(ProductVariant.id).where(
+            ProductVariant.product_id == product_id,
+            ProductVariant.seating_capacity == seating_capacity,
+        )
+        if exclude_variant_id is not None:
+            stmt = stmt.where(ProductVariant.id != exclude_variant_id)
+        if self.db.scalar(stmt):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Seating capacity {seating_capacity} already exists for this product",
+            )
+
+    def add_product_variant(self, product_id: int, payload: ProductVariantCreate) -> Product:
+        product = self._get_product_or_404(product_id)
+        self._ensure_unique_variant_sku(payload.sku)
+        self._ensure_unique_seating_capacity(product_id, payload.seating_capacity)
+
+        product.variants.append(ProductVariant(**payload.model_dump()))
+        self.db.commit()
+        self.db.refresh(product)
+        return product
+
+    def update_product_variant(
+        self,
+        product_id: int,
+        variant_id: int,
+        payload: ProductVariantUpdate,
+    ) -> Product:
+        product = self._get_product_or_404(product_id)
+        variant = self._get_variant_or_404(product_id, variant_id)
+        update_data = payload.model_dump(exclude_unset=True)
+
+        if not update_data:
+            raise HTTPException(status_code=400, detail="No fields provided to update")
+
+        if update_data.get("sku"):
+            self._ensure_unique_variant_sku(update_data["sku"], exclude_variant_id=variant_id)
+
+        if "seating_capacity" in update_data:
+            self._ensure_unique_seating_capacity(
+                product_id,
+                update_data["seating_capacity"],
+                exclude_variant_id=variant_id,
+            )
+
+        for field, value in update_data.items():
+            setattr(variant, field, value)
+
+        self.db.commit()
+        self.db.refresh(product)
+        return product
+
+    def delete_product_variant(self, product_id: int, variant_id: int) -> None:
+        variant = self._get_variant_or_404(product_id, variant_id)
+        self.db.delete(variant)
         self.db.commit()

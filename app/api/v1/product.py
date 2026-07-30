@@ -5,7 +5,13 @@ from sqlalchemy.orm import Session
 
 from app.api.deps.database import get_db
 from app.db.schemas import Product
-from app.schemas.product import ProductCreate, ProductResponse, ProductUpdate
+from app.schemas.product import (
+    ProductCreate,
+    ProductResponse,
+    ProductUpdate,
+    ProductVariantCreate,
+    ProductVariantUpdate,
+)
 from app.services.cloudinary.cloudinary_service import CloudinaryService
 from app.services.product.product_service import ProductService
 
@@ -83,3 +89,31 @@ def delete_product_image(
     service: ProductService = Depends(get_product_service),
 ) -> None:
     service.delete_product_image(product_id, image_id)
+
+
+@router.post("/{product_id}/variants", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
+def add_product_variant(
+    product_id: int,
+    payload: ProductVariantCreate,
+    service: ProductService = Depends(get_product_service),
+) -> Product:
+    return service.add_product_variant(product_id, payload)
+
+
+@router.patch("/{product_id}/variants/{variant_id}", response_model=ProductResponse)
+def update_product_variant(
+    product_id: int,
+    variant_id: int,
+    payload: ProductVariantUpdate,
+    service: ProductService = Depends(get_product_service),
+) -> Product:
+    return service.update_product_variant(product_id, variant_id, payload)
+
+
+@router.delete("/{product_id}/variants/{variant_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_product_variant(
+    product_id: int,
+    variant_id: int,
+    service: ProductService = Depends(get_product_service),
+) -> None:
+    service.delete_product_variant(product_id, variant_id)

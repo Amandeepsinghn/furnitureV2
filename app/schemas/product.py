@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
 class ProductImageCreate(BaseModel):
@@ -20,11 +20,27 @@ class ProductVariantCreate(BaseModel):
     color: str | None = Field(default=None, max_length=80)
     material: str | None = Field(default=None, max_length=80)
     size_label: str | None = Field(default=None, max_length=80)
+    seating_capacity: int | None = Field(default=None, ge=1)
     width_cm: Decimal | None = Field(default=None, ge=0)
     height_cm: Decimal | None = Field(default=None, ge=0)
     depth_cm: Decimal | None = Field(default=None, ge=0)
     stock_quantity: int = Field(default=0, ge=0)
     is_active: bool = True
+
+
+class ProductVariantUpdate(BaseModel):
+    sku: str | None = Field(default=None, max_length=80)
+    name: str | None = Field(default=None, max_length=120)
+    price: Decimal | None = Field(default=None, ge=0)
+    color: str | None = Field(default=None, max_length=80)
+    material: str | None = Field(default=None, max_length=80)
+    size_label: str | None = Field(default=None, max_length=80)
+    seating_capacity: int | None = Field(default=None, ge=1)
+    width_cm: Decimal | None = Field(default=None, ge=0)
+    height_cm: Decimal | None = Field(default=None, ge=0)
+    depth_cm: Decimal | None = Field(default=None, ge=0)
+    stock_quantity: int | None = Field(default=None, ge=0)
+    is_active: bool | None = None
 
 
 class ProductCreate(BaseModel):
@@ -99,6 +115,7 @@ class ProductVariantResponse(BaseModel):
     color: str | None
     material: str | None
     size_label: str | None
+    seating_capacity: int | None
     width_cm: Decimal | None
     height_cm: Decimal | None
     depth_cm: Decimal | None
@@ -122,6 +139,11 @@ class ProductSummaryResponse(BaseModel):
     color: str | None
     is_featured: bool
     primary_image_url: str | None = None
+
+    @computed_field
+    @property
+    def productId(self) -> int:
+        return self.id
 
 
 class ProductResponse(BaseModel):
@@ -153,3 +175,8 @@ class ProductResponse(BaseModel):
     updated_at: datetime
     images: list[ProductImageResponse] = []
     variants: list[ProductVariantResponse] = []
+
+    @computed_field
+    @property
+    def productId(self) -> int:
+        return self.id

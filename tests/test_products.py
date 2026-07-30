@@ -125,3 +125,94 @@ def test_delete_product(client, test_category, unique_suffix, db):
 def test_delete_product_not_found(client):
     response = client.delete("/api/v1/products/999999")
     assert response.status_code == 404
+
+
+def test_create_sofa_with_seating_variants(client, test_category, unique_suffix, db):
+    from sqlalchemy import delete
+
+    from app.db.schemas import Product, ProductVariant
+
+    response = client.post(
+        "/api/v1/products",
+        json={
+            "category_id": test_category.id,
+            "name": f"Emerald Shell Velvet Sofa {unique_suffix}",
+            "price": 29999,
+            "variants": [
+                {
+                    "sku": f"EMERALD-3S-{unique_suffix}",
+                    "name": "3 Seater",
+                    "seating_capacity": 3,
+                    "size_label": "3 Seater",
+                    "price": 29999,
+                },
+                {
+                    "sku": f"EMERALD-5S-{unique_suffix}",
+                    "name": "5 Seater",
+                    "seating_capacity": 5,
+                    "size_label": "5 Seater",
+                    "price": 44999,
+                },
+                {
+                    "sku": f"EMERALD-7S-{unique_suffix}",
+                    "name": "7 Seater",
+                    "seating_capacity": 7,
+                    "size_label": "7 Seater",
+                    "price": 59999,
+                },
+            ],
+        },
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert len(data["variants"]) == 3
+    capacities = {v["seating_capacity"] for v in data["variants"]}
+    assert capacities == {3, 5, 7}
+
+    db.execute(delete(ProductVariant).where(ProductVariant.product_id == data["id"]))
+    db.execute(delete(Product).where(Product.id == data["id"]))
+    db.commit()
+
+
+def test_add_update_delete_seating_variant(client, test_product, unique_suffix):
+    add_response = client.post(
+        f"/api/v1/products/{test_product.id}/variants",
+        json={
+            "sku": f"SEAT-3-{unique_suffix}",
+            "name": "3 Seater",
+            "seating_capacity": 3,
+            "size_label": "3 Seater",
+            "price": 29999,
+        },
+    )
+    assert add_response.status_code == 201
+    variants = add_response.json()["variants"]
+    assert len(variants) == 1
+    variant_id = variants[0]["id"]
+    assert variants[0]["seating_capacity"] == 3
+
+    update_response = client.patch(
+        f"/api/v1/products/{test_product.id}/variants/{variant_id}",
+        json={"price": 31999, "seating_capacity": 5, "name": "5 Seater"},
+    )
+    assert update_response.status_code == 200
+    updated = next(v for v in update_response.json()["variants"] if v["id"] == variant_id)
+    assert float(updated["price"]) == 31999
+    assert updated["seating_capacity"] == 5
+
+    # Duplicate seating capacity should fail
+    dup_response = client.post(
+        f"/api/v1/products/{test_product.id}/variants",
+        json={
+            "sku": f"SEAT-5-DUP-{unique_suffix}",
+            "name": "5 Seater Dup",
+            "seating_capacity": 5,
+            "price": 40000,
+        },
+    )
+    assert dup_response.status_code == 409
+
+    delete_response = client.delete(
+        f"/api/v1/products/{test_product.id}/variants/{variant_id}"
+    )
+    assert delete_response.status_code == 204
