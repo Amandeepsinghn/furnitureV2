@@ -7,7 +7,11 @@ from app.api.deps.database import get_db
 from app.db.schemas import Category, Product, User
 from app.schemas.cart import AddToCartRequest, CartResponse
 from app.schemas.category import CategoryProductsResponse, CategoryResponse
-from app.schemas.product import ProductResponse, ProductSummaryResponse
+from app.schemas.product import (
+    ProductResponse,
+    ProductSummaryResponse,
+    SeatingOptionResponse,
+)
 from app.schemas.search import ProductSearchResponse
 from app.schemas.user import UserProfileResponse
 from app.services.cart.cart_service import CartService
@@ -26,6 +30,29 @@ def get_primary_image_url(product: Product) -> str | None:
     return product.images[0].url if product.images else None
 
 
+def build_seating_options(product: Product) -> list[SeatingOptionResponse]:
+    options: list[SeatingOptionResponse] = []
+    for variant in product.variants:
+        if not variant.is_active or variant.seating_capacity is None:
+            continue
+        options.append(
+            SeatingOptionResponse(
+                variantId=variant.id,
+                seatingCapacity=variant.seating_capacity,
+                label=variant.size_label or variant.name or f"{variant.seating_capacity} Seater",
+                price=variant.price,
+                compare_at_price=product.compare_at_price,
+                currency=product.currency,
+                width_cm=variant.width_cm,
+                height_cm=variant.height_cm,
+                depth_cm=variant.depth_cm,
+                is_active=variant.is_active,
+            )
+        )
+    options.sort(key=lambda option: option.seatingCapacity)
+    return options
+
+
 def to_product_summary(product: Product) -> ProductSummaryResponse:
     return ProductSummaryResponse(
         id=product.id,
@@ -39,6 +66,46 @@ def to_product_summary(product: Product) -> ProductSummaryResponse:
         color=product.color,
         is_featured=product.is_featured,
         primary_image_url=get_primary_image_url(product),
+        seatingOptions=build_seating_options(product),
+    )
+
+
+def to_product_response(product: Product) -> ProductResponse:
+    return ProductResponse(
+        id=product.id,
+        category_id=product.category_id,
+        name=product.name,
+        slug=product.slug,
+        description=product.description,
+        short_description=product.short_description,
+        sku=product.sku,
+        price=product.price,
+        compare_at_price=product.compare_at_price,
+        currency=product.currency,
+        material=product.material,
+        color=product.color,
+        style=product.style,
+        room_type=product.room_type,
+        width_cm=product.width_cm,
+        height_cm=product.height_cm,
+        depth_cm=product.depth_cm,
+        weight_kg=product.weight_kg,
+        extra_specs=product.extra_specs,
+        is_featured=product.is_featured,
+        is_active=product.is_active,
+        stock_quantity=product.stock_quantity,
+        created_at=product.created_at,
+        updated_at=product.updated_at,
+        images=product.images,
+        variants=product.variants,
+        seatingOptions=build_seating_options(product),
+    )
+
+
+def product_with_images_and_variants():
+    return (
+        selectinload(Product.images),
+        selectinload(Product.variants),
     )
 
 
@@ -130,7 +197,7 @@ def list_products_by_category(
     stmt = (
         select(Product)
         .where(*filters)
-        .options(selectinload(Product.images))
+        .options(*product_with_images_and_variants())
         .order_by(Product.is_featured.desc(), Product.name)
         .offset(skip)
         .limit(limit)
@@ -182,7 +249,7 @@ def search_products(
     stmt = (
         select(Product)
         .where(*filters)
-        .options(selectinload(Product.images))
+        .options(*product_with_images_and_variants())
         .order_by(Product.is_featured.desc(), Product.name)
         .offset(skip)
         .limit(limit)
@@ -199,15 +266,15 @@ def search_products(
 
 
 @router.get("/products/{slug}", response_model=ProductResponse)
-def get_product(slug: str, db: Session = Depends(get_db)) -> Product:
+def get_product(slug: str, db: Session = Depends(get_db)) -> ProductResponse:
     product = db.scalar(
         select(Product)
         .where(Product.slug == slug, Product.is_active.is_(True))
-        .options(selectinload(Product.images), selectinload(Product.variants))
+        .options(*product_with_images_and_variants())
     )
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
-    return product
+    return to_product_response(product)
 
 
 @router.get("/products", response_model=list[ProductSummaryResponse])
@@ -225,7 +292,7 @@ def list_featured_products(
     stmt = (
         select(Product)
         .where(*filters)
-        .options(selectinload(Product.images))
+        .options(*product_with_images_and_variants())
         .order_by(Product.name)
         .offset(skip)
         .limit(limit)

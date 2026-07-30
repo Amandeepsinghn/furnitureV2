@@ -168,6 +168,21 @@ def test_create_sofa_with_seating_variants(client, test_category, unique_suffix,
     assert len(data["variants"]) == 3
     capacities = {v["seating_capacity"] for v in data["variants"]}
     assert capacities == {3, 5, 7}
+    assert "seatingOptions" in data
+    assert [o["seatingCapacity"] for o in data["seatingOptions"]] == [3, 5, 7]
+    assert float(data["seatingOptions"][0]["price"]) == 29999
+    assert float(data["seatingOptions"][1]["price"]) == 44999
+    assert float(data["seatingOptions"][2]["price"]) == 59999
+
+    detail = client.get(f"/api/v1/products/{data['slug']}")
+    assert detail.status_code == 200
+    detail_data = detail.json()
+    assert [o["seatingCapacity"] for o in detail_data["seatingOptions"]] == [3, 5, 7]
+
+    category_list = client.get(f"/api/v1/categories/{test_category.slug}/products")
+    assert category_list.status_code == 200
+    listed = next(p for p in category_list.json()["products"] if p["id"] == data["id"])
+    assert [o["seatingCapacity"] for o in listed["seatingOptions"]] == [3, 5, 7]
 
     db.execute(delete(ProductVariant).where(ProductVariant.product_id == data["id"]))
     db.execute(delete(Product).where(Product.id == data["id"]))

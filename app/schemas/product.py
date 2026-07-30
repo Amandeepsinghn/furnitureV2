@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 
 class ProductImageCreate(BaseModel):
@@ -125,6 +125,19 @@ class ProductVariantResponse(BaseModel):
     updated_at: datetime
 
 
+class SeatingOptionResponse(BaseModel):
+    variantId: int
+    seatingCapacity: int
+    label: str
+    price: Decimal | None
+    compare_at_price: Decimal | None = None
+    currency: str = "INR"
+    width_cm: Decimal | None = None
+    height_cm: Decimal | None = None
+    depth_cm: Decimal | None = None
+    is_active: bool = True
+
+
 class ProductSummaryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -139,6 +152,7 @@ class ProductSummaryResponse(BaseModel):
     color: str | None
     is_featured: bool
     primary_image_url: str | None = None
+    seatingOptions: list[SeatingOptionResponse] = []
 
     @computed_field
     @property
@@ -175,8 +189,34 @@ class ProductResponse(BaseModel):
     updated_at: datetime
     images: list[ProductImageResponse] = []
     variants: list[ProductVariantResponse] = []
+    seatingOptions: list[SeatingOptionResponse] = []
 
     @computed_field
     @property
     def productId(self) -> int:
         return self.id
+
+    @model_validator(mode="after")
+    def fill_seating_options(self) -> "ProductResponse":
+        if self.seatingOptions:
+            return self
+        options: list[SeatingOptionResponse] = []
+        for variant in self.variants:
+            if not variant.is_active or variant.seating_capacity is None:
+                continue
+            options.append(
+                SeatingOptionResponse(
+                    variantId=variant.id,
+                    seatingCapacity=variant.seating_capacity,
+                    label=variant.size_label or variant.name or f"{variant.seating_capacity} Seater",
+                    price=variant.price,
+                    compare_at_price=self.compare_at_price,
+                    currency=self.currency,
+                    width_cm=variant.width_cm,
+                    height_cm=variant.height_cm,
+                    depth_cm=variant.depth_cm,
+                    is_active=variant.is_active,
+                )
+            )
+        self.seatingOptions = sorted(options, key=lambda option: option.seatingCapacity)
+        return self
