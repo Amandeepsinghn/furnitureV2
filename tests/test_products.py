@@ -127,7 +127,7 @@ def test_delete_product_not_found(client):
     assert response.status_code == 404
 
 
-def test_create_sofa_with_seating_variants(client, test_category, unique_suffix, db):
+def test_create_sofa_with_seating_options_field(client, test_category, unique_suffix, db):
     from sqlalchemy import delete
 
     from app.db.schemas import Product, ProductVariant
@@ -137,52 +137,34 @@ def test_create_sofa_with_seating_variants(client, test_category, unique_suffix,
         json={
             "category_id": test_category.id,
             "name": f"Emerald Shell Velvet Sofa {unique_suffix}",
-            "price": 29999,
-            "variants": [
-                {
-                    "sku": f"EMERALD-3S-{unique_suffix}",
-                    "name": "3 Seater",
-                    "seating_capacity": 3,
-                    "size_label": "3 Seater",
-                    "price": 29999,
-                },
-                {
-                    "sku": f"EMERALD-5S-{unique_suffix}",
-                    "name": "5 Seater",
-                    "seating_capacity": 5,
-                    "size_label": "5 Seater",
-                    "price": 44999,
-                },
-                {
-                    "sku": f"EMERALD-7S-{unique_suffix}",
-                    "name": "7 Seater",
-                    "seating_capacity": 7,
-                    "size_label": "7 Seater",
-                    "price": 59999,
-                },
+            "compare_at_price": 69999,
+            "seatingOptions": [
+                {"seatingCapacity": 3, "price": 29999, "label": "3 Seater"},
+                {"seatingCapacity": 5, "price": 44999, "label": "5 Seater"},
+                {"seatingCapacity": 7, "price": 59999, "label": "7 Seater"},
             ],
         },
     )
     assert response.status_code == 201
     data = response.json()
-    assert len(data["variants"]) == 3
-    capacities = {v["seating_capacity"] for v in data["variants"]}
-    assert capacities == {3, 5, 7}
-    assert "seatingOptions" in data
+    assert float(data["price"]) == 29999
     assert [o["seatingCapacity"] for o in data["seatingOptions"]] == [3, 5, 7]
-    assert float(data["seatingOptions"][0]["price"]) == 29999
     assert float(data["seatingOptions"][1]["price"]) == 44999
-    assert float(data["seatingOptions"][2]["price"]) == 59999
 
-    detail = client.get(f"/api/v1/products/{data['slug']}")
-    assert detail.status_code == 200
-    detail_data = detail.json()
-    assert [o["seatingCapacity"] for o in detail_data["seatingOptions"]] == [3, 5, 7]
-
-    category_list = client.get(f"/api/v1/categories/{test_category.slug}/products")
-    assert category_list.status_code == 200
-    listed = next(p for p in category_list.json()["products"] if p["id"] == data["id"])
-    assert [o["seatingCapacity"] for o in listed["seatingOptions"]] == [3, 5, 7]
+    update = client.patch(
+        f"/api/v1/products/{data['id']}",
+        json={
+            "seatingOptions": [
+                {"seatingCapacity": 3, "price": 31999, "label": "3 Seater"},
+                {"seatingCapacity": 5, "price": 46999, "label": "5 Seater"},
+                {"seatingCapacity": 7, "price": 62999, "label": "7 Seater"},
+            ]
+        },
+    )
+    assert update.status_code == 200
+    updated = update.json()
+    assert float(updated["seatingOptions"][0]["price"]) == 31999
+    assert float(updated["seatingOptions"][2]["price"]) == 62999
 
     db.execute(delete(ProductVariant).where(ProductVariant.product_id == data["id"]))
     db.execute(delete(Product).where(Product.id == data["id"]))

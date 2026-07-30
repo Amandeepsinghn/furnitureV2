@@ -7,7 +7,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.schemas import Category, Product, ProductImage, ProductVariant
-from app.schemas.product import ProductCreate, ProductImageCreate, ProductUpdate, ProductVariantCreate, ProductVariantUpdate
+from app.schemas.product import (
+    ProductCreate,
+    ProductImageCreate,
+    ProductUpdate,
+    ProductVariantCreate,
+    ProductVariantUpdate,
+    SeatingOptionInput,
+)
 from app.services.cloudinary.cloudinary_service import CloudinaryService
 
 
@@ -30,6 +37,115 @@ class ProductService:
     def __init__(self, session: Session, cloudinary_service: CloudinaryService | None = None):
         self.db = session
         self.cloudinary = cloudinary_service or CloudinaryService()
+
+    def _seating_option_to_variant(
+        self,
+        option: SeatingOptionInput,
+        *,
+        product_slug: str,
+    ) -> ProductVariantCreate:
+        label = option.label or f"{option.seating_capacity} Seater"
+        sku = option.sku or f"{product_slug}-{option.seating_capacity}s"
+        return ProductVariantCreate(
+            sku=sku[:80],
+            name=label,
+            price=option.price,
+            size_label=label,
+            seating_capacity=option.seating_capacity,
+            width_cm=option.width_cm,
+            height_cm=option.height_cm,
+            depth_cm=option.depth_cm,
+            stock_quantity=option.stock_quantity,
+            is_active=option.is_active,
+        )
+
+    def _merge_seating_options_into_variants(
+        self,
+        variants: list[ProductVariantCreate],
+        seating_options: list[SeatingOptionInput],
+        *,
+        product_slug: str,
+    ) -> list[ProductVariantCreate]:
+        if not seating_options:
+            return variants
+
+        capacities = [option.seating_capacity for option in seating_options]
+        if len(capacities) != len(set(capacities)):
+            raise HTTPException(
+                status_code=400,
+                detail="Duplicate seatingCapacity values are not allowed",
+            )
+
+        merged = list(variants)
+        existing_capacities = {
+            variant.seating_capacity
+            for variant in merged
+            if variant.seating_capacity is not None
+        }
+        for option in seating_options:
+            if option.seating_capacity in existing_capacities:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Seating capacity {option.seating_capacity} is already set "
+                        "in variants; use seatingOptions or variants, not both"
+                    ),
+                )
+            merged.append(
+                self._seating_option_to_variant(option, product_slug=product_slug)
+            )
+            existing_capacities.add(option.seating_capacity)
+        return merged
+
+    def _sync_seating_options(self, product: Product, seating_options: list[SeatingOptionInput]) -> None:
+        if not seating_options:
+            return
+
+        capacities = [option.seating_capacity for option in seating_options]
+        if len(capacities) != len(set(capacities)):
+            raise HTTPException(
+                status_code=400,
+                detail="Duplicate seatingCapacity values are not allowed",
+            )
+
+        existing_by_capacity = {
+            variant.seating_capacity: variant
+            for variant in product.variants
+            if variant.seating_capacity is not None
+        }
+
+        for option in seating_options:
+            label = option.label or f"{option.seating_capacity} Seater"
+            existing = existing_by_capacity.get(option.seating_capacity)
+            if existing:
+                if option.sku and option.sku != existing.sku:
+                    self._ensure_unique_variant_sku(option.sku, exclude_variant_id=existing.id)
+                    existing.sku = option.sku
+                existing.name = label
+                existing.size_label = label
+                existing.price = option.price
+                existing.width_cm = option.width_cm
+                existing.height_cm = option.height_cm
+                existing.depth_cm = option.depth_cm
+                existing.stock_quantity = option.stock_quantity
+                existing.is_active = option.is_active
+            else:
+                sku = option.sku or f"{product.slug}-{option.seating_capacity}s"
+                self._ensure_unique_variant_sku(sku[:80])
+                product.variants.append(
+                    ProductVariant(
+                        sku=sku[:80],
+                        name=label,
+                        price=option.price,
+                        size_label=label,
+                        seating_capacity=option.seating_capacity,
+                        width_cm=option.width_cm,
+                        height_cm=option.height_cm,
+                        depth_cm=option.depth_cm,
+                        stock_quantity=option.stock_quantity,
+                        is_active=option.is_active,
+                    )
+                )
 
     def _attach_images(
         self,
@@ -81,14 +197,26 @@ class ProductService:
         if payload.sku and self.db.scalar(select(Product.id).where(Product.sku == payload.sku)):
             raise HTTPException(status_code=409, detail="Product SKU already exists")
 
+        product_slug = unique_slug(self.db, base_slug)
+        variants = self._merge_seating_options_into_variants(
+            list(payload.variants),
+            payload.seatingOptions,
+            product_slug=product_slug,
+        )
+
+        # Default product price to the lowest seating option if not provided
+        product_price = payload.price
+        if product_price is None and payload.seatingOptions:
+            product_price = min(option.price for option in payload.seatingOptions)
+
         product = Product(
             category_id=payload.category_id,
             name=payload.name,
-            slug=unique_slug(self.db, base_slug),
+            slug=product_slug,
             description=payload.description,
             short_description=payload.short_description,
             sku=payload.sku,
-            price=payload.price,
+            price=product_price,
             compare_at_price=payload.compare_at_price,
             currency=payload.currency,
             material=payload.material,
@@ -105,7 +233,7 @@ class ProductService:
             stock_quantity=payload.stock_quantity,
         )
 
-        for variant_data in payload.variants:
+        for variant_data in variants:
             existing_variant = self.db.scalar(
                 select(ProductVariant.id).where(ProductVariant.sku == variant_data.sku)
             )
@@ -199,8 +327,9 @@ class ProductService:
     def update_product(self, product_id: int, payload: ProductUpdate) -> Product:
         product = self._get_product_or_404(product_id)
         update_data = payload.model_dump(exclude_unset=True)
+        seating_options = update_data.pop("seatingOptions", None)
 
-        if not update_data:
+        if not update_data and seating_options is None:
             raise HTTPException(status_code=400, detail="No fields provided to update")
 
         if "category_id" in update_data:
@@ -235,6 +364,10 @@ class ProductService:
 
         for field, value in update_data.items():
             setattr(product, field, value)
+
+        if seating_options is not None:
+            options = [SeatingOptionInput.model_validate(option) for option in seating_options]
+            self._sync_seating_options(product, options)
 
         self.db.commit()
         self.db.refresh(product)

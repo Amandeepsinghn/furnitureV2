@@ -43,7 +43,25 @@ class ProductVariantUpdate(BaseModel):
     is_active: bool | None = None
 
 
+class SeatingOptionInput(BaseModel):
+    """Simple sofa seating price input for create/update."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    seating_capacity: int = Field(..., ge=1, alias="seatingCapacity")
+    price: Decimal = Field(..., ge=0)
+    label: str | None = Field(default=None, max_length=120)
+    sku: str | None = Field(default=None, max_length=80)
+    width_cm: Decimal | None = Field(default=None, ge=0)
+    height_cm: Decimal | None = Field(default=None, ge=0)
+    depth_cm: Decimal | None = Field(default=None, ge=0)
+    stock_quantity: int = Field(default=0, ge=0)
+    is_active: bool = True
+
+
 class ProductCreate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     category_id: int
     name: str = Field(..., min_length=1, max_length=200)
     slug: str | None = Field(default=None, max_length=220)
@@ -67,9 +85,12 @@ class ProductCreate(BaseModel):
     stock_quantity: int = Field(default=0, ge=0)
     images: list[ProductImageCreate] = []
     variants: list[ProductVariantCreate] = []
+    seatingOptions: list[SeatingOptionInput] = Field(default_factory=list)
 
 
 class ProductUpdate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     category_id: int | None = None
     name: str | None = Field(default=None, min_length=1, max_length=200)
     slug: str | None = Field(default=None, max_length=220)
@@ -91,6 +112,8 @@ class ProductUpdate(BaseModel):
     is_featured: bool | None = None
     is_active: bool | None = None
     stock_quantity: int | None = Field(default=None, ge=0)
+    seatingOptions: list[SeatingOptionInput] | None = None
+
 
 
 class ProductImageResponse(BaseModel):
