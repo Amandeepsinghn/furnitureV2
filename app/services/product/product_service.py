@@ -13,7 +13,9 @@ from app.schemas.product import (
     ProductUpdate,
     ProductVariantCreate,
     ProductVariantUpdate,
+    QuantityOptionInput,
     SeatingOptionInput,
+    SideTableOptionInput,
 )
 from app.services.cloudinary.cloudinary_service import CloudinaryService
 
@@ -147,6 +149,222 @@ class ProductService:
                     )
                 )
 
+    def _quantity_option_to_variant(
+        self,
+        option: QuantityOptionInput,
+        *,
+        product_slug: str,
+    ) -> ProductVariantCreate:
+        label = option.label or (
+            "1 Chair" if option.quantity == 1 else f"{option.quantity} Chairs"
+        )
+        sku = option.sku or f"{product_slug}-qty-{option.quantity}"
+        return ProductVariantCreate(
+            sku=sku[:80],
+            name=label,
+            price=option.price,
+            size_label=label,
+            pack_quantity=option.quantity,
+            stock_quantity=option.stock_quantity,
+            is_active=option.is_active,
+        )
+
+    def _merge_quantity_options_into_variants(
+        self,
+        variants: list[ProductVariantCreate],
+        quantity_options: list[QuantityOptionInput],
+        *,
+        product_slug: str,
+    ) -> list[ProductVariantCreate]:
+        if not quantity_options:
+            return variants
+
+        quantities = [option.quantity for option in quantity_options]
+        if len(quantities) != len(set(quantities)):
+            raise HTTPException(
+                status_code=400,
+                detail="Duplicate quantity values are not allowed",
+            )
+
+        merged = list(variants)
+        existing_quantities = {
+            variant.pack_quantity for variant in merged if variant.pack_quantity is not None
+        }
+        for option in quantity_options:
+            if option.quantity in existing_quantities:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Pack quantity {option.quantity} is already set "
+                        "in variants; use quantityOptions or variants, not both"
+                    ),
+                )
+            merged.append(
+                self._quantity_option_to_variant(option, product_slug=product_slug)
+            )
+            existing_quantities.add(option.quantity)
+        return merged
+
+    def _sync_quantity_options(
+        self,
+        product: Product,
+        quantity_options: list[QuantityOptionInput],
+    ) -> None:
+        if not quantity_options:
+            return
+
+        quantities = [option.quantity for option in quantity_options]
+        if len(quantities) != len(set(quantities)):
+            raise HTTPException(
+                status_code=400,
+                detail="Duplicate quantity values are not allowed",
+            )
+
+        existing_by_quantity = {
+            variant.pack_quantity: variant
+            for variant in product.variants
+            if variant.pack_quantity is not None
+        }
+
+        for option in quantity_options:
+            label = option.label or (
+                "1 Chair" if option.quantity == 1 else f"{option.quantity} Chairs"
+            )
+            existing = existing_by_quantity.get(option.quantity)
+            if existing:
+                if option.sku and option.sku != existing.sku:
+                    self._ensure_unique_variant_sku(option.sku, exclude_variant_id=existing.id)
+                    existing.sku = option.sku
+                existing.name = label
+                existing.size_label = label
+                existing.price = option.price
+                existing.stock_quantity = option.stock_quantity
+                existing.is_active = option.is_active
+            else:
+                sku = option.sku or f"{product.slug}-qty-{option.quantity}"
+                self._ensure_unique_variant_sku(sku[:80])
+                product.variants.append(
+                    ProductVariant(
+                        sku=sku[:80],
+                        name=label,
+                        price=option.price,
+                        size_label=label,
+                        pack_quantity=option.quantity,
+                        stock_quantity=option.stock_quantity,
+                        is_active=option.is_active,
+                    )
+                )
+
+    def _side_table_option_to_variant(
+        self,
+        option: SideTableOptionInput,
+        *,
+        product_slug: str,
+    ) -> ProductVariantCreate:
+        label = option.label or (
+            "With side table" if option.includes_side_table else "Without side table"
+        )
+        suffix = "with-side-table" if option.includes_side_table else "no-side-table"
+        sku = option.sku or f"{product_slug}-{suffix}"
+        return ProductVariantCreate(
+            sku=sku[:80],
+            name=label,
+            price=option.price,
+            size_label=label,
+            includes_side_table=option.includes_side_table,
+            stock_quantity=option.stock_quantity,
+            is_active=option.is_active,
+        )
+
+    def _merge_side_table_options_into_variants(
+        self,
+        variants: list[ProductVariantCreate],
+        side_table_options: list[SideTableOptionInput],
+        *,
+        product_slug: str,
+    ) -> list[ProductVariantCreate]:
+        if not side_table_options:
+            return variants
+
+        flags = [option.includes_side_table for option in side_table_options]
+        if len(flags) != len(set(flags)):
+            raise HTTPException(
+                status_code=400,
+                detail="Duplicate includesSideTable values are not allowed",
+            )
+
+        merged = list(variants)
+        existing_flags = {
+            variant.includes_side_table
+            for variant in merged
+            if variant.includes_side_table is not None
+        }
+        for option in side_table_options:
+            if option.includes_side_table in existing_flags:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Side table option includesSideTable={option.includes_side_table} "
+                        "is already set in variants; use sideTableOptions or variants, not both"
+                    ),
+                )
+            merged.append(
+                self._side_table_option_to_variant(option, product_slug=product_slug)
+            )
+            existing_flags.add(option.includes_side_table)
+        return merged
+
+    def _sync_side_table_options(
+        self,
+        product: Product,
+        side_table_options: list[SideTableOptionInput],
+    ) -> None:
+        if not side_table_options:
+            return
+
+        flags = [option.includes_side_table for option in side_table_options]
+        if len(flags) != len(set(flags)):
+            raise HTTPException(
+                status_code=400,
+                detail="Duplicate includesSideTable values are not allowed",
+            )
+
+        existing_by_flag = {
+            variant.includes_side_table: variant
+            for variant in product.variants
+            if variant.includes_side_table is not None
+        }
+
+        for option in side_table_options:
+            label = option.label or (
+                "With side table" if option.includes_side_table else "Without side table"
+            )
+            existing = existing_by_flag.get(option.includes_side_table)
+            if existing:
+                if option.sku and option.sku != existing.sku:
+                    self._ensure_unique_variant_sku(option.sku, exclude_variant_id=existing.id)
+                    existing.sku = option.sku
+                existing.name = label
+                existing.size_label = label
+                existing.price = option.price
+                existing.stock_quantity = option.stock_quantity
+                existing.is_active = option.is_active
+            else:
+                suffix = "with-side-table" if option.includes_side_table else "no-side-table"
+                sku = option.sku or f"{product.slug}-{suffix}"
+                self._ensure_unique_variant_sku(sku[:80])
+                product.variants.append(
+                    ProductVariant(
+                        sku=sku[:80],
+                        name=label,
+                        price=option.price,
+                        size_label=label,
+                        includes_side_table=option.includes_side_table,
+                        stock_quantity=option.stock_quantity,
+                        is_active=option.is_active,
+                    )
+                )
+
     def _attach_images(
         self,
         product: Product,
@@ -203,11 +421,25 @@ class ProductService:
             payload.seatingOptions,
             product_slug=product_slug,
         )
+        variants = self._merge_quantity_options_into_variants(
+            variants,
+            payload.quantityOptions,
+            product_slug=product_slug,
+        )
+        variants = self._merge_side_table_options_into_variants(
+            variants,
+            payload.sideTableOptions,
+            product_slug=product_slug,
+        )
 
-        # Default product price to the lowest seating option if not provided
+        # Default product price to the lowest option price if not provided
         product_price = payload.price
         if product_price is None and payload.seatingOptions:
             product_price = min(option.price for option in payload.seatingOptions)
+        if product_price is None and payload.quantityOptions:
+            product_price = min(option.price for option in payload.quantityOptions)
+        if product_price is None and payload.sideTableOptions:
+            product_price = min(option.price for option in payload.sideTableOptions)
 
         product = Product(
             category_id=payload.category_id,
@@ -251,6 +483,29 @@ class ProductService:
                     raise HTTPException(
                         status_code=409,
                         detail=f"Seating capacity {variant_data.seating_capacity} already exists for this product",
+                    )
+            if variant_data.pack_quantity is not None:
+                duplicate_quantity = any(
+                    v.pack_quantity == variant_data.pack_quantity for v in product.variants
+                )
+                if duplicate_quantity:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Pack quantity {variant_data.pack_quantity} already exists for this product",
+                    )
+            if variant_data.includes_side_table is not None:
+                duplicate_side_table = any(
+                    v.includes_side_table == variant_data.includes_side_table
+                    for v in product.variants
+                    if v.includes_side_table is not None
+                )
+                if duplicate_side_table:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            f"Side table option includesSideTable="
+                            f"{variant_data.includes_side_table} already exists for this product"
+                        ),
                     )
             product.variants.append(ProductVariant(**variant_data.model_dump()))
 
@@ -328,8 +583,15 @@ class ProductService:
         product = self._get_product_or_404(product_id)
         update_data = payload.model_dump(exclude_unset=True)
         seating_options = update_data.pop("seatingOptions", None)
+        quantity_options = update_data.pop("quantityOptions", None)
+        side_table_options = update_data.pop("sideTableOptions", None)
 
-        if not update_data and seating_options is None:
+        if (
+            not update_data
+            and seating_options is None
+            and quantity_options is None
+            and side_table_options is None
+        ):
             raise HTTPException(status_code=400, detail="No fields provided to update")
 
         if "category_id" in update_data:
@@ -368,6 +630,14 @@ class ProductService:
         if seating_options is not None:
             options = [SeatingOptionInput.model_validate(option) for option in seating_options]
             self._sync_seating_options(product, options)
+
+        if quantity_options is not None:
+            options = [QuantityOptionInput.model_validate(option) for option in quantity_options]
+            self._sync_quantity_options(product, options)
+
+        if side_table_options is not None:
+            options = [SideTableOptionInput.model_validate(option) for option in side_table_options]
+            self._sync_side_table_options(product, options)
 
         self.db.commit()
         self.db.refresh(product)
@@ -417,10 +687,55 @@ class ProductService:
                 detail=f"Seating capacity {seating_capacity} already exists for this product",
             )
 
+    def _ensure_unique_pack_quantity(
+        self,
+        product_id: int,
+        pack_quantity: int | None,
+        exclude_variant_id: int | None = None,
+    ) -> None:
+        if pack_quantity is None:
+            return
+        stmt = select(ProductVariant.id).where(
+            ProductVariant.product_id == product_id,
+            ProductVariant.pack_quantity == pack_quantity,
+        )
+        if exclude_variant_id is not None:
+            stmt = stmt.where(ProductVariant.id != exclude_variant_id)
+        if self.db.scalar(stmt):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Pack quantity {pack_quantity} already exists for this product",
+            )
+
+    def _ensure_unique_side_table_option(
+        self,
+        product_id: int,
+        includes_side_table: bool | None,
+        exclude_variant_id: int | None = None,
+    ) -> None:
+        if includes_side_table is None:
+            return
+        stmt = select(ProductVariant.id).where(
+            ProductVariant.product_id == product_id,
+            ProductVariant.includes_side_table == includes_side_table,
+        )
+        if exclude_variant_id is not None:
+            stmt = stmt.where(ProductVariant.id != exclude_variant_id)
+        if self.db.scalar(stmt):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Side table option includesSideTable={includes_side_table} "
+                    "already exists for this product"
+                ),
+            )
+
     def add_product_variant(self, product_id: int, payload: ProductVariantCreate) -> Product:
         product = self._get_product_or_404(product_id)
         self._ensure_unique_variant_sku(payload.sku)
         self._ensure_unique_seating_capacity(product_id, payload.seating_capacity)
+        self._ensure_unique_pack_quantity(product_id, payload.pack_quantity)
+        self._ensure_unique_side_table_option(product_id, payload.includes_side_table)
 
         product.variants.append(ProductVariant(**payload.model_dump()))
         self.db.commit()
@@ -447,6 +762,20 @@ class ProductService:
             self._ensure_unique_seating_capacity(
                 product_id,
                 update_data["seating_capacity"],
+                exclude_variant_id=variant_id,
+            )
+
+        if "pack_quantity" in update_data:
+            self._ensure_unique_pack_quantity(
+                product_id,
+                update_data["pack_quantity"],
+                exclude_variant_id=variant_id,
+            )
+
+        if "includes_side_table" in update_data:
+            self._ensure_unique_side_table_option(
+                product_id,
+                update_data["includes_side_table"],
                 exclude_variant_id=variant_id,
             )
 

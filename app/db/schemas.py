@@ -280,6 +280,8 @@ class ProductVariant(Base):
     material: Mapped[str | None] = mapped_column(String(80), nullable=True)
     size_label: Mapped[str | None] = mapped_column(String(80), nullable=True)
     seating_capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pack_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    includes_side_table: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     width_cm: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     height_cm: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     depth_cm: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)

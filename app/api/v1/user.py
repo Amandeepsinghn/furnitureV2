@@ -10,7 +10,9 @@ from app.schemas.category import CategoryProductsResponse, CategoryResponse
 from app.schemas.product import (
     ProductResponse,
     ProductSummaryResponse,
+    QuantityOptionResponse,
     SeatingOptionResponse,
+    SideTableOptionResponse,
 )
 from app.schemas.search import ProductSearchResponse
 from app.schemas.user import UserProfileResponse
@@ -53,6 +55,52 @@ def build_seating_options(product: Product) -> list[SeatingOptionResponse]:
     return options
 
 
+def build_quantity_options(product: Product) -> list[QuantityOptionResponse]:
+    options: list[QuantityOptionResponse] = []
+    for variant in product.variants:
+        if not variant.is_active or variant.pack_quantity is None:
+            continue
+        label = variant.size_label or variant.name
+        if not label:
+            label = "1 Chair" if variant.pack_quantity == 1 else f"{variant.pack_quantity} Chairs"
+        options.append(
+            QuantityOptionResponse(
+                variantId=variant.id,
+                quantity=variant.pack_quantity,
+                label=label,
+                price=variant.price,
+                compare_at_price=product.compare_at_price,
+                currency=product.currency,
+                is_active=variant.is_active,
+            )
+        )
+    options.sort(key=lambda option: option.quantity)
+    return options
+
+
+def build_side_table_options(product: Product) -> list[SideTableOptionResponse]:
+    options: list[SideTableOptionResponse] = []
+    for variant in product.variants:
+        if not variant.is_active or variant.includes_side_table is None:
+            continue
+        label = variant.size_label or variant.name
+        if not label:
+            label = "With side table" if variant.includes_side_table else "Without side table"
+        options.append(
+            SideTableOptionResponse(
+                variantId=variant.id,
+                includesSideTable=variant.includes_side_table,
+                label=label,
+                price=variant.price,
+                compare_at_price=product.compare_at_price,
+                currency=product.currency,
+                is_active=variant.is_active,
+            )
+        )
+    options.sort(key=lambda option: option.includesSideTable)
+    return options
+
+
 def to_product_summary(product: Product) -> ProductSummaryResponse:
     return ProductSummaryResponse(
         id=product.id,
@@ -67,6 +115,8 @@ def to_product_summary(product: Product) -> ProductSummaryResponse:
         is_featured=product.is_featured,
         primary_image_url=get_primary_image_url(product),
         seatingOptions=build_seating_options(product),
+        quantityOptions=build_quantity_options(product),
+        sideTableOptions=build_side_table_options(product),
     )
 
 
@@ -99,6 +149,8 @@ def to_product_response(product: Product) -> ProductResponse:
         images=product.images,
         variants=product.variants,
         seatingOptions=build_seating_options(product),
+        quantityOptions=build_quantity_options(product),
+        sideTableOptions=build_side_table_options(product),
     )
 
 
