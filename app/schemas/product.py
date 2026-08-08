@@ -17,6 +17,7 @@ class ProductVariantCreate(BaseModel):
     sku: str = Field(..., max_length=80)
     name: str = Field(..., max_length=120)
     price: Decimal | None = Field(default=None, ge=0)
+    compare_at_price: Decimal | None = Field(default=None, ge=0)
     color: str | None = Field(default=None, max_length=80)
     material: str | None = Field(default=None, max_length=80)
     size_label: str | None = Field(default=None, max_length=80)
@@ -34,6 +35,7 @@ class ProductVariantUpdate(BaseModel):
     sku: str | None = Field(default=None, max_length=80)
     name: str | None = Field(default=None, max_length=120)
     price: Decimal | None = Field(default=None, ge=0)
+    compare_at_price: Decimal | None = Field(default=None, ge=0)
     color: str | None = Field(default=None, max_length=80)
     material: str | None = Field(default=None, max_length=80)
     size_label: str | None = Field(default=None, max_length=80)
@@ -54,6 +56,9 @@ class SeatingOptionInput(BaseModel):
 
     seating_capacity: int = Field(..., ge=1, alias="seatingCapacity")
     price: Decimal = Field(..., ge=0)
+    compare_at_price: Decimal | None = Field(
+        default=None, ge=0, alias="compareAtPrice"
+    )
     label: str | None = Field(default=None, max_length=120)
     sku: str | None = Field(default=None, max_length=80)
     width_cm: Decimal | None = Field(default=None, ge=0)
@@ -70,6 +75,9 @@ class QuantityOptionInput(BaseModel):
 
     quantity: int = Field(..., ge=1, le=6)
     price: Decimal = Field(..., ge=0)
+    compare_at_price: Decimal | None = Field(
+        default=None, ge=0, alias="compareAtPrice"
+    )
     label: str | None = Field(default=None, max_length=120)
     sku: str | None = Field(default=None, max_length=80)
     stock_quantity: int = Field(default=0, ge=0)
@@ -83,6 +91,9 @@ class SideTableOptionInput(BaseModel):
 
     includes_side_table: bool = Field(..., alias="includesSideTable")
     price: Decimal = Field(..., ge=0)
+    compare_at_price: Decimal | None = Field(
+        default=None, ge=0, alias="compareAtPrice"
+    )
     label: str | None = Field(default=None, max_length=120)
     sku: str | None = Field(default=None, max_length=80)
     stock_quantity: int = Field(default=0, ge=0)
@@ -168,6 +179,7 @@ class ProductVariantResponse(BaseModel):
     sku: str
     name: str
     price: Decimal | None
+    compare_at_price: Decimal | None
     color: str | None
     material: str | None
     size_label: str | None
@@ -184,11 +196,13 @@ class ProductVariantResponse(BaseModel):
 
 
 class SeatingOptionResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     variantId: int
     seatingCapacity: int
     label: str
     price: Decimal | None
-    compare_at_price: Decimal | None = None
+    compare_at_price: Decimal | None = Field(default=None, alias="compareAtPrice")
     currency: str = "INR"
     width_cm: Decimal | None = None
     height_cm: Decimal | None = None
@@ -197,21 +211,25 @@ class SeatingOptionResponse(BaseModel):
 
 
 class QuantityOptionResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     variantId: int
     quantity: int
     label: str
     price: Decimal | None
-    compare_at_price: Decimal | None = None
+    compare_at_price: Decimal | None = Field(default=None, alias="compareAtPrice")
     currency: str = "INR"
     is_active: bool = True
 
 
 class SideTableOptionResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     variantId: int
     includesSideTable: bool
     label: str
     price: Decimal | None
-    compare_at_price: Decimal | None = None
+    compare_at_price: Decimal | None = Field(default=None, alias="compareAtPrice")
     currency: str = "INR"
     is_active: bool = True
 
@@ -293,7 +311,9 @@ class ProductResponse(BaseModel):
                         or variant.name
                         or f"{variant.seating_capacity} Seater",
                         price=variant.price,
-                        compare_at_price=self.compare_at_price,
+                        compare_at_price=variant.compare_at_price
+                        if variant.compare_at_price is not None
+                        else self.compare_at_price,
                         currency=self.currency,
                         width_cm=variant.width_cm,
                         height_cm=variant.height_cm,
@@ -320,7 +340,9 @@ class ProductResponse(BaseModel):
                             else f"{variant.pack_quantity} Chairs"
                         ),
                         price=variant.price,
-                        compare_at_price=self.compare_at_price,
+                        compare_at_price=variant.compare_at_price
+                        if variant.compare_at_price is not None
+                        else self.compare_at_price,
                         currency=self.currency,
                         is_active=variant.is_active,
                     )
@@ -344,7 +366,9 @@ class ProductResponse(BaseModel):
                             else "Without side table"
                         ),
                         price=variant.price,
-                        compare_at_price=self.compare_at_price,
+                        compare_at_price=variant.compare_at_price
+                        if variant.compare_at_price is not None
+                        else self.compare_at_price,
                         currency=self.currency,
                         is_active=variant.is_active,
                     )

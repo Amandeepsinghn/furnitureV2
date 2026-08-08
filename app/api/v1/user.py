@@ -43,7 +43,9 @@ def build_seating_options(product: Product) -> list[SeatingOptionResponse]:
                 seatingCapacity=variant.seating_capacity,
                 label=variant.size_label or variant.name or f"{variant.seating_capacity} Seater",
                 price=variant.price,
-                compare_at_price=product.compare_at_price,
+                compare_at_price=variant.compare_at_price
+                if variant.compare_at_price is not None
+                else product.compare_at_price,
                 currency=product.currency,
                 width_cm=variant.width_cm,
                 height_cm=variant.height_cm,
@@ -69,7 +71,9 @@ def build_quantity_options(product: Product) -> list[QuantityOptionResponse]:
                 quantity=variant.pack_quantity,
                 label=label,
                 price=variant.price,
-                compare_at_price=product.compare_at_price,
+                compare_at_price=variant.compare_at_price
+                if variant.compare_at_price is not None
+                else product.compare_at_price,
                 currency=product.currency,
                 is_active=variant.is_active,
             )
@@ -92,7 +96,9 @@ def build_side_table_options(product: Product) -> list[SideTableOptionResponse]:
                 includesSideTable=variant.includes_side_table,
                 label=label,
                 price=variant.price,
-                compare_at_price=product.compare_at_price,
+                compare_at_price=variant.compare_at_price
+                if variant.compare_at_price is not None
+                else product.compare_at_price,
                 currency=product.currency,
                 is_active=variant.is_active,
             )

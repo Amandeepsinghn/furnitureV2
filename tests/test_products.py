@@ -139,9 +139,24 @@ def test_create_sofa_with_seating_options_field(client, test_category, unique_su
             "name": f"Emerald Shell Velvet Sofa {unique_suffix}",
             "compare_at_price": 69999,
             "seatingOptions": [
-                {"seatingCapacity": 3, "price": 29999, "label": "3 Seater"},
-                {"seatingCapacity": 5, "price": 44999, "label": "5 Seater"},
-                {"seatingCapacity": 7, "price": 59999, "label": "7 Seater"},
+                {
+                    "seatingCapacity": 3,
+                    "price": 29999,
+                    "compareAtPrice": 39999,
+                    "label": "3 Seater",
+                },
+                {
+                    "seatingCapacity": 5,
+                    "price": 44999,
+                    "compareAtPrice": 54999,
+                    "label": "5 Seater",
+                },
+                {
+                    "seatingCapacity": 7,
+                    "price": 59999,
+                    "compareAtPrice": 69999,
+                    "label": "7 Seater",
+                },
             ],
         },
     )
@@ -150,14 +165,32 @@ def test_create_sofa_with_seating_options_field(client, test_category, unique_su
     assert float(data["price"]) == 29999
     assert [o["seatingCapacity"] for o in data["seatingOptions"]] == [3, 5, 7]
     assert float(data["seatingOptions"][1]["price"]) == 44999
+    assert float(data["seatingOptions"][0]["compareAtPrice"]) == 39999
+    assert float(data["seatingOptions"][1]["compareAtPrice"]) == 54999
+    assert float(data["seatingOptions"][2]["compareAtPrice"]) == 69999
 
     update = client.patch(
         f"/api/v1/products/{data['id']}",
         json={
             "seatingOptions": [
-                {"seatingCapacity": 3, "price": 31999, "label": "3 Seater"},
-                {"seatingCapacity": 5, "price": 46999, "label": "5 Seater"},
-                {"seatingCapacity": 7, "price": 62999, "label": "7 Seater"},
+                {
+                    "seatingCapacity": 3,
+                    "price": 31999,
+                    "compareAtPrice": 41999,
+                    "label": "3 Seater",
+                },
+                {
+                    "seatingCapacity": 5,
+                    "price": 46999,
+                    "compareAtPrice": 56999,
+                    "label": "5 Seater",
+                },
+                {
+                    "seatingCapacity": 7,
+                    "price": 62999,
+                    "compareAtPrice": 72999,
+                    "label": "7 Seater",
+                },
             ]
         },
     )
@@ -165,6 +198,8 @@ def test_create_sofa_with_seating_options_field(client, test_category, unique_su
     updated = update.json()
     assert float(updated["seatingOptions"][0]["price"]) == 31999
     assert float(updated["seatingOptions"][2]["price"]) == 62999
+    assert float(updated["seatingOptions"][0]["compareAtPrice"]) == 41999
+    assert float(updated["seatingOptions"][2]["compareAtPrice"]) == 72999
 
     db.execute(delete(ProductVariant).where(ProductVariant.product_id == data["id"]))
     db.execute(delete(Product).where(Product.id == data["id"]))
@@ -227,12 +262,12 @@ def test_create_chair_with_quantity_options_field(client, test_category, unique_
             "name": f"Luxury Cane Back Bar Stool {unique_suffix}",
             "compare_at_price": 50000,
             "quantityOptions": [
-                {"quantity": 1, "price": 15, "label": "1 Chair"},
-                {"quantity": 2, "price": 28, "label": "2 Chairs"},
-                {"quantity": 3, "price": 40, "label": "3 Chairs"},
-                {"quantity": 4, "price": 52, "label": "4 Chairs"},
-                {"quantity": 5, "price": 64, "label": "5 Chairs"},
-                {"quantity": 6, "price": 75, "label": "6 Chairs"},
+                {"quantity": 1, "price": 15, "compareAtPrice": 25, "label": "1 Chair"},
+                {"quantity": 2, "price": 28, "compareAtPrice": 50, "label": "2 Chairs"},
+                {"quantity": 3, "price": 40, "compareAtPrice": 75, "label": "3 Chairs"},
+                {"quantity": 4, "price": 52, "compareAtPrice": 100, "label": "4 Chairs"},
+                {"quantity": 5, "price": 64, "compareAtPrice": 125, "label": "5 Chairs"},
+                {"quantity": 6, "price": 75, "compareAtPrice": 150, "label": "6 Chairs"},
             ],
         },
     )
@@ -242,18 +277,20 @@ def test_create_chair_with_quantity_options_field(client, test_category, unique_
     assert [o["quantity"] for o in data["quantityOptions"]] == [1, 2, 3, 4, 5, 6]
     assert float(data["quantityOptions"][0]["price"]) == 15
     assert float(data["quantityOptions"][1]["price"]) == 28
+    assert float(data["quantityOptions"][0]["compareAtPrice"]) == 25
+    assert float(data["quantityOptions"][1]["compareAtPrice"]) == 50
     assert data["quantityOptions"][0]["variantId"] is not None
 
     update = client.patch(
         f"/api/v1/products/{data['id']}",
         json={
             "quantityOptions": [
-                {"quantity": 1, "price": 16, "label": "1 Chair"},
-                {"quantity": 2, "price": 30, "label": "2 Chairs"},
-                {"quantity": 3, "price": 42, "label": "3 Chairs"},
-                {"quantity": 4, "price": 54, "label": "4 Chairs"},
-                {"quantity": 5, "price": 66, "label": "5 Chairs"},
-                {"quantity": 6, "price": 78, "label": "6 Chairs"},
+                {"quantity": 1, "price": 16, "compareAtPrice": 26, "label": "1 Chair"},
+                {"quantity": 2, "price": 30, "compareAtPrice": 52, "label": "2 Chairs"},
+                {"quantity": 3, "price": 42, "compareAtPrice": 78, "label": "3 Chairs"},
+                {"quantity": 4, "price": 54, "compareAtPrice": 104, "label": "4 Chairs"},
+                {"quantity": 5, "price": 66, "compareAtPrice": 130, "label": "5 Chairs"},
+                {"quantity": 6, "price": 78, "compareAtPrice": 156, "label": "6 Chairs"},
             ]
         },
     )
@@ -261,11 +298,14 @@ def test_create_chair_with_quantity_options_field(client, test_category, unique_
     updated = update.json()
     assert float(updated["quantityOptions"][0]["price"]) == 16
     assert float(updated["quantityOptions"][1]["price"]) == 30
+    assert float(updated["quantityOptions"][0]["compareAtPrice"]) == 26
+    assert float(updated["quantityOptions"][1]["compareAtPrice"]) == 52
 
     browse = client.get(f"/api/v1/products/{data['slug']}")
     assert browse.status_code == 200
     assert [o["quantity"] for o in browse.json()["quantityOptions"]] == [1, 2, 3, 4, 5, 6]
     assert float(browse.json()["quantityOptions"][1]["price"]) == 30
+    assert float(browse.json()["quantityOptions"][1]["compareAtPrice"]) == 52
 
     db.execute(delete(ProductVariant).where(ProductVariant.product_id == data["id"]))
     db.execute(delete(Product).where(Product.id == data["id"]))

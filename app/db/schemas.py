@@ -282,6 +282,7 @@ class ProductVariant(Base):
     seating_capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
     pack_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
     includes_side_table: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    compare_at_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     width_cm: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     height_cm: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     depth_cm: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)

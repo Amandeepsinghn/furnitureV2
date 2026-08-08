@@ -52,6 +52,7 @@ class ProductService:
             sku=sku[:80],
             name=label,
             price=option.price,
+            compare_at_price=option.compare_at_price,
             size_label=label,
             seating_capacity=option.seating_capacity,
             width_cm=option.width_cm,
@@ -126,6 +127,7 @@ class ProductService:
                 existing.name = label
                 existing.size_label = label
                 existing.price = option.price
+                existing.compare_at_price = option.compare_at_price
                 existing.width_cm = option.width_cm
                 existing.height_cm = option.height_cm
                 existing.depth_cm = option.depth_cm
@@ -139,6 +141,7 @@ class ProductService:
                         sku=sku[:80],
                         name=label,
                         price=option.price,
+                        compare_at_price=option.compare_at_price,
                         size_label=label,
                         seating_capacity=option.seating_capacity,
                         width_cm=option.width_cm,
@@ -163,6 +166,7 @@ class ProductService:
             sku=sku[:80],
             name=label,
             price=option.price,
+            compare_at_price=option.compare_at_price,
             size_label=label,
             pack_quantity=option.quantity,
             stock_quantity=option.stock_quantity,
@@ -238,6 +242,7 @@ class ProductService:
                 existing.name = label
                 existing.size_label = label
                 existing.price = option.price
+                existing.compare_at_price = option.compare_at_price
                 existing.stock_quantity = option.stock_quantity
                 existing.is_active = option.is_active
             else:
@@ -248,6 +253,7 @@ class ProductService:
                         sku=sku[:80],
                         name=label,
                         price=option.price,
+                        compare_at_price=option.compare_at_price,
                         size_label=label,
                         pack_quantity=option.quantity,
                         stock_quantity=option.stock_quantity,
@@ -270,6 +276,7 @@ class ProductService:
             sku=sku[:80],
             name=label,
             price=option.price,
+            compare_at_price=option.compare_at_price,
             size_label=label,
             includes_side_table=option.includes_side_table,
             stock_quantity=option.stock_quantity,
@@ -347,6 +354,7 @@ class ProductService:
                 existing.name = label
                 existing.size_label = label
                 existing.price = option.price
+                existing.compare_at_price = option.compare_at_price
                 existing.stock_quantity = option.stock_quantity
                 existing.is_active = option.is_active
             else:
@@ -358,6 +366,7 @@ class ProductService:
                         sku=sku[:80],
                         name=label,
                         price=option.price,
+                        compare_at_price=option.compare_at_price,
                         size_label=label,
                         includes_side_table=option.includes_side_table,
                         stock_quantity=option.stock_quantity,
